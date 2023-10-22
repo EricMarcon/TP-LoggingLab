@@ -1,0 +1,596 @@
+---
+title: "Logging Lab"
+author: "Eric Marcon"
+date: "`r Sys.Date()`"
+bibliography: references.bib
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+# Installation of packages if necessary
+InstallPackages <- function(Packages) {
+  InstallPackage <- function(Package) {
+    if (!Package %in% installed.packages()[, 1]) {
+      install.packages(Package, repos="https://cran.rstudio.com/")
+    }
+  }
+  invisible(sapply(Packages, InstallPackage))
+}
+# Basic packages
+InstallPackages(c("bookdown", "formatR", "tidyverse", "DT"))
+# Specific packages
+InstallPackages(c("remotes"))
+# knitr options
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, message = FALSE)
+# Load the tidyverse
+library("tidyverse")
+```
+
+# Package installation
+
+We will use the LoggingLab package for R [@Badouard2023] to simulate reduced-impact logging in a tropical forest.
+The package must be installed from its Github repository because it is not on CRAN yet.
+
+```{r}
+# Install the latest dev version
+remotes::install_github("EricMarcon/LoggingLab", ref = "em")
+# To be changed for 
+# remotes::install_github("VincyaneBadouard/LoggingLab")
+# after merging
+```
+
+# Data
+
+## Inventory
+
+The inventory of Paracou plot 6 is available.
+
+```{r}
+library("LoggingLab")
+data(Paracou6_2016)
+# Show the data
+Paracou6_2016 %>% 
+  head()
+```
+
+Columns required by the package are: 
+
+- `Forest`: the forest name to apply the corresponding volume formula.
+- `idTree`: a unique indentifier for each tree. 
+- `Xutm` and `Yutm`: the coordinates of each tree. 
+- `CodeAlive`: alive or dead tree.
+- `Family`, `Genus`, `Species`: botanical data. 
+- `CircCorr`: circumference of each tree.
+
+## Plot mask
+
+The plot mask sets the limits of the area to log.
+
+```{r}
+library(sp)
+plot(PlotMask)
+```
+
+## Species data
+
+`SpeciesCriteria` contains data specific to each species:
+
+```{r}
+SpeciesCriteria %>% 
+  head()
+```
+
+Columns are:
+
+- `CommercialLevel`: Economic interest level. 1: principal economic species, 2 or more: species logged in a objective of diversification, 0: species whose genus is covered by a commercial name, but which are not logged.
+- `MinFD`: Minimum Felling Diameter, in centimeters.
+- `UpMinFD`: Enhanced Minimum Felling Diameter (over-rich stand case), in centimeters.
+- `MaxFD`: Maximum Felling Diameter, in centimeters.
+- `Aggregative`: Aggregative character of the species.
+It `TRUE`, isolated trees will not be logged.
+
+
+## Volume Parameters Table
+
+`ForestZoneVolumeParametersTable` contains the allometry parameters to compute.
+
+$$Volume = aCoef + bCoef \times DBH^2$$
+```{r}
+ForestZoneVolumeParametersTable %>% 
+  head()
+```   
+
+## Scenarios
+
+Scenarios gather the main management parameters.
+
+They are use to define the harvestable area, the trees to log and the modelling of secondary tracks.
+
+```{r}
+data(ScenariosTable)
+ScenariosTable
+```
+
+Columns are:
+
+- Type: The name of the scenario.
+- SpatialDataType: the type of spatial data (Lidar or SRTM).
+- Objective: Objective volume per hectare.
+- Diversification: Allow logging other species in addition to the main commercial ones.
+- Winching: Winching method. No cable or grapple = "0", only cable = "1", grapple + cable = "2".
+- DirectionalFelling: "0" = unused, "1" = only to avoid damage to future and reserve trees, "2" = avoid damage to future and reserve trees + trail orientation.
+
+All functions allow `scenario = "manual"`: then, all arguments must be added manually.
+Their name is the same as that of columns.
+
+
+# Detailed Logging simulation
+
+## Validate the inventory
+
+Trees that are not in the logged area or are too small to be considered are deleted.
+
+```{r}
+Paracou6_2016 %>% 
+  # Check the required columns are available
+  inventorycheckformat() %>% 
+  # Retain trees that may be logged
+  cleaninventory(PlotMask, loggingparameters()) ->
+  inventory
+```
+
+`loggingparameters()` sets all logging parameters.
+See its help.
+Default values are those used in French Guiana.
+
+## Compute tree dimensions
+
+Compute tree dimensions (tree, trunk and crown height, crown diameter, harvestable volume, wood density, and AGB).
+
+```{r}
+inventory %>% 
+  addtreedim(volumeparameters = ForestZoneVolumeParametersTable) ->
+  inventory
+```
+
+
+## Main skidding trails
+
+Generate the main trail of the inventoried plot, as lines at the edge and outside of the plot.
+
+```{r}
+MainTrails <- maintrailextract(DTMParacou)
+library("sp")
+plot(DTMParacou)
+plot(MainTrails, add = TRUE)
+```
+
+## Harvestable area definition
+
+Define harvestable zones and machine-accessible zones within the plot.
+
+By default, a prospecting unit is an area connected to a truck trail or a main skid trail, with a slope of less than 27%, avoiding lowlands and the water system (30 m buffer).
+
+We use a manual scenario to be able to change the arguments easily.
+Winching is set to 2, i.e. grapple is used if possible (6m span), cable is used up to 40m.
+
+```{r}
+HarvestableArea <- harvestableareadefinition(
+  topography = DTMParacou,
+  creekverticaldistance = CreekDistances$distvert,
+  creekhorizontaldistance = CreekDistances$disthorz,
+  maintrails = MainTrails,
+  plotmask = PlotMask,
+  scenario = "manual",
+  winching = "2",
+  advancedloggingparameters = loggingparameters()
+)
+
+# Plot
+ggplot() +
+  # Harvestable zones
+  geom_sf(
+    data = HarvestableArea$HarvestablePolygons,
+    fill = "olivedrab", alpha = 0.1
+  ) +
+  geom_sf(
+    data = HarvestableArea$MachinePolygons,
+    fill = "olivedrab", alpha = 0.5
+  ) ->
+  LoggingMap
+LoggingMap
+```
+
+Light green areas are harvestable. Dark green ones are harvestable by machines.
+
+Compare with the slopes.
+
+```{r}
+plot(HarvestableArea$PlotSlope)
+```
+
+
+## Tree selection
+
+Select trees to harvest, and future and reserve trees.
+
+Trees are harvestable if: 
+
+- They belong to species of first economic rank or more if diversification.
+- DBH is between the MinFD and the MaxFD. 
+- They are not isolated (>100m by default) from other individuals of the same species in the aggregative species case.
+- They are located on slopes < 22%.
+- They are off the main trails.
+
+If the harvestable volume is higher than the objective volume, and that diversification was not chosen, MinFD of the first economic rank species only is increased. 
+If diversification is allowed, MinFD of first and second economic level species is increased. 
+Then, the trees to be harvested are chosen in decreasing order of volume, until the objective volume is reached.
+
+If the harvestable volume is too low, diversification can be applied (`specieslax = TRUE`): trees of all commercial ranks are selected in decreasing order of volume until the objective volume is reached, or harvesting can continue despite an unreached objective volume, or be abandoned (`objectivelax = FALSE`).
+
+```{r}
+inventory %>% 
+  # Include commercial criteria to the inventory
+  commercialcriteriajoin(SpeciesCriteria) ->
+  inventory
+
+inventory %>% 
+  treeselection(
+    topography = DTMParacou,
+    speciescriteria = SpeciesCriteria,
+    scenario ="manual", 
+    objective = 20,
+    fuel = "2",
+    winching = "2",
+    diversification = FALSE, 
+    specieslax = FALSE,
+    objectivelax = TRUE,
+    harvestablearea = HarvestableArea$HarvestableArea,
+    plotslope = HarvestableArea$PlotSlope,
+    maintrails = MainTrails,
+    harvestablepolygons = HarvestableArea$HarvestablePolygons,
+    advancedloggingparameters = loggingparameters()
+  ) ->
+  TreeSelection
+```
+
+
+## Secondary skidding trails layout
+
+Starting from the main skidding trails, draw secondary skidding trails on the zones accessible to the machines, allowing to collect the selected trees with the chosen machines (argument `winching`).
+The layout is optimised to reduce the distance covered while respecting topographical constraints and avoiding trees to protect.
+
+Skidding trails (main, secondary) allow timber to be transported from the stand to truck roads.
+
+The secondary skidding trails: 
+
+- are 4 m wide (`ScndTrailWidth`),
+- have 22% maximum slope in length (`MaxTrailCenterlineSlope`),
+- have 4% maximum side slope, taken into account if Lidar data if available (`MaxTrailCrossSlope`). 
+
+They avoid: 
+
+- the trees to be logged *
+- the trees with a DBH of more than 50 cm (`BigTrees`) 
+- the reserved trees. 
+
+They join, in decreasing order of priority: 
+
+1. groups in decreasing order of tree abundance,
+2. those with the shortest distance to the nearest track.
+
+The `scenario` argument may be:
+
+- RIL1/RIL2broken: trails go to the base of trees.
+- RIL2: cable only i.e. trails go up to a maximum of 40 m (`CableLength`) from trees. 
+- RIL3/RIL3 including fuel: grapple is used from trails with longitudinal slope <20% (`GrappleMaxslope`). 
+Trails go up to 6 m (`GrappleLength`) from the trees.
+Cable is used only when the longitudinal slope is greater than 20% or when the tree to be skidded is isolated from other trees to be exploited, from 6 to 40 m. 
+Trails must be less than 40 m (`CableLength`) from the trees.
+
+
+```{r}
+ScndTrailOutputs <- secondtrailsopening(
+  topography = DTMParacou,
+  plotmask = PlotMask,
+  maintrails = MainTrails,
+  plotslope = HarvestableArea$PlotSlope,
+  harvestablepolygons = HarvestableArea$HarvestablePolygons,
+  machinepolygons = HarvestableArea$MachinePolygons,
+  treeselectionoutputs = TreeSelection,
+  scenario = "manual",
+  winching = "2",
+  fuel = "2",
+  advancedloggingparameters = loggingparameters()
+)
+inventory <- ScndTrailOutputs$inventory
+```
+## Maps
+
+Easy-to-use mapping functions are not in the package yet.
+We use `sf` objects and `ggplot()`.
+
+First, prepare an `sf` for all types of trees.
+
+```{r}
+inventory %>% 
+  filter(LoggingStatus == "non-harvestable") %>% 
+  st_as_sf(coords = c("Xutm", "Yutm")) %>%
+  st_set_crs(st_crs(SecondaryTrails$MainTrailsAccess)) ->
+  NonHarvestable
+
+inventory %>% 
+  filter(LoggingStatus == "harvestable") %>% 
+  st_as_sf(coords = c("Xutm", "Yutm")) %>%
+  st_set_crs(st_crs(SecondaryTrails$MainTrailsAccess)) ->
+  Harvestable
+
+inventory %>% 
+  filter(LoggingStatus == "reserve") %>% 
+  st_as_sf(coords = c("Xutm", "Yutm")) %>%
+  st_set_crs(st_crs(SecondaryTrails$MainTrailsAccess)) ->
+  Reserve
+
+inventory %>% 
+  filter(LoggingStatus == "future") %>% 
+  st_as_sf(coords = c("Xutm", "Yutm")) %>%
+  st_set_crs(st_crs(SecondaryTrails$MainTrailsAccess)) ->
+  Future
+```
+
+Plot non-harvestable trees.
+
+```{r}
+LoggingMap +
+  geom_sf(
+    data = NonHarvestable,
+    aes(colour = "NonHarvestable")
+  ) +
+  labs(colour = "Trees")
+```
+
+Plot the harvestable trees.
+
+```{r}
+LoggingMap +
+  geom_sf(
+    data = Harvestable,
+    aes(colour = "Harvestable"), 
+    size = 4
+  ) +
+  labs(colour = "Trees")
+```
+
+Plot all designated trees.
+
+```{r}
+LoggingMap +
+  geom_sf(
+    data = Harvestable,
+    aes(colour = "Harvestable"), 
+    size = 4
+  ) +
+  geom_sf(
+    data = Reserve,
+    aes(colour = "Reserve"), 
+    size = 4
+  ) +
+  geom_sf(
+    data = Future,
+    aes(colour = "Future"), 
+    size = 4
+  ) +
+  labs(colour = "Trees") ->
+  LoggingMap
+LoggingMap
+```
+
+Add the tracks.
+
+```{r}
+LoggingMap +
+  # 2ndary trails
+  geom_sf(
+    data = st_as_sf(SecondaryTrails$SmoothedTrails), 
+    col = "darkgreen"
+  ) +
+  geom_sf(
+    data = st_as_sf(SecondaryTrails$MainTrailsAccess), 
+    col = "black"
+  ) 
+```
+
+Access points are black.
+
+
+## Tree felling
+
+Simulate the tree felling, with the success or failure of the direction of the tree fall, foot to the trail, with an angle to the trail and avoiding the trees to protect, as desired. 
+If fuel wood is exploited, the tree will be directed with its crown towards the trail (if the orientation is successful) so that it can be retrieved with a grapple.
+
+The felling of the tree creates a tree (including crown) on the ground, with dimensions calculated by specific allometries (`advancedloggingparameters`).
+The process depends on the scenario. 
+For example, scenarios without fuel wood imply:
+
+- with 60% (`TreefallSuccessProportion`) probability: base of the tree towards the nearest trail.
+- with 40% probability: random fall.
+    
+We choose `fuel = "2"`: exploitation of hollow trees, damages and and unused part of the logs. The trees will be recovered from the crown with a grapple if possible. If not, recovery will be from the base of the pole with a cable at an angle to the trail.
+
+```{r}
+inventory %>% 
+  treefelling(
+    scenario = "manual", 
+    fuel = "2",
+    winching = "2", 
+    directionalfelling = "2",
+    maintrailsaccess = ScndTrailOutputs$MainTrailsAccess,
+    scndtrail = ScndTrailOutputs$SmoothedTrails,
+    advancedloggingparameters = loggingparameters()
+  ) -> 
+  inventory
+```
+
+## Adjust secondary skidding tracks
+
+If fuel wood is exploited, the layout of the skidding trails is redefined to favour the recovery of trees by the crown (only with a grapple) in order to use the crowns for fuel wood.
+
+```{r}
+ScndTrailAdjustOutputs <- 
+  secondtrailsadjusted(
+    inventory,
+    topography = DTMParacou,
+    plotmask = PlotMask,
+    maintrails = MainTrails,
+    plotslope = HarvestableArea$PlotSlope,
+    harvestablepolygons = Harvestable$HarvestablePolygons,
+    machinepolygons = HarvestableArea$MachinePolygons,
+    maintrailsaccess = ScndTrailOutputs$MainTrailsAccess,
+    scenario = "manual",
+    winching = "2",
+    advancedloggingparameters = loggingparameters()
+  )
+```
+## Post-logging map
+
+We make a map with all trees, including felled ones.
+
+```{r}
+# Selected trees
+inventory %>% 
+  filter(Selected == "1") %>% 
+  st_as_sf(coords = c("Xutm", "Yutm")) %>%
+  st_set_crs(st_crs(SecondaryTrails$MainTrailsAccess)) ->
+  Selected
+
+# Treefalls
+inventory %>% 
+  filter(LoggingStatus == "treefall2nd") %>% 
+  st_as_sf(coords = c("Xutm", "Yutm")) %>%
+  st_set_crs(st_crs(SecondaryTrails$MainTrailsAccess)) ->
+  Treefall
+
+# Make an sf with inventory
+inventory %>% 
+  sf::st_as_sf(coords = c("Xutm", "Yutm")) %>% 
+  sf::st_set_crs(sf::st_crs(MainTrails)) ->
+  Inventory_crs
+
+# Make an sf with felled trees
+inventory %>%
+  getgeometry(TreePolygon) %>%
+  sf::st_set_crs(sf::st_crs(MainTrails)) -> 
+  TreePolygon
+
+# Make a map
+ggplot() +
+  geom_sf(data = Inventory_crs) +
+  geom_sf(data = NonHarvestable, aes(colour = "Non-harvestable"), show.legend = "point") +
+  geom_sf(data = Future, aes(colour = "Future"), size = 4, show.legend = "point") +
+  geom_sf(data = Reserve, aes(colour = "Reserve"), size = 4, show.legend = "point") +
+  geom_sf(data = Harvestable, aes(colour = "Harvestable"), size = 4, show.legend = "point") +
+  # Felled trees
+  geom_sf(data = TreePolygon, alpha = 0.5, fill = "red") +
+  geom_sf(data = Selected, aes(colour = "Selected"), show.legend = "point") +
+  geom_sf(data = Treefall, aes(colour = "Treefall2nd"), show.legend = "point") +
+  geom_sf(data = SecondaryTrails$maintrailsaccess, alpha = 0.5, fill = "black") +
+  geom_sf(data = SecondaryTrails$SmoothedTrails, alpha = 0.5, fill = "black") +
+  scale_colour_manual(
+    values = c(
+      "Non-harvestable" = "grey",
+      "Visible defect" = "pink", 
+      "Harvestable" = "skyblue",
+      "HarvestableUp" = "blue", 
+      "Selected" = "red",
+      "Future" = "orange",
+      "Reserve" = "purple",
+      "Probed hollow" = "forestgreen",
+      "Treefall2nd" = "chocolate4"
+    )
+  ) +
+  labs(color = "Logging status")
+```
+
+
+## Quantify the logged volumes
+
+### Timber
+
+Compute the timber harvested volume in healthy trees exploited for timber, and in the hollow trees if they are also harvested for fuel wood.
+
+```{r}
+TimberV <- timberharvestedvolume(
+  inventory, 
+  scenario = "manual", 
+  fuel = "2",
+  advancedloggingparameters = loggingparameters()
+)
+inventory <- TimberV$inventory
+TimberV
+```
+
+
+### Fuel wood
+
+Compute the harvestable fuel wood biomass in healthy trees exploited for timber (their unused part), in the hollow trees and in the damaged trees (caused by tracks and secondary windfalls).
+Computes also the the unused degraded tree biomass.
+
+```{r}
+FuelV <- harvestablefuelwood(
+  inventory, 
+  scenario = "manual", 
+  fuel = "2",
+  TimberLoggedVolume = TimberV$TimberLoggedVolume,
+  NoHollowTimberLoggedVolume = TimberV$NoHollowTimberLoggedVolume,
+  advancedloggingparameters = loggingparameters()
+)
+inventory <- FuelV$inventory
+FuelV
+```
+
+
+# Quick Logging simulation
+
+## A single simulation
+
+All simulations steps can be included in a single function to save time.
+
+
+```{r}
+Rslt <- loggingsimulation1(
+  Paracou6_2016,
+  plotmask = PlotMask, 
+  topography = DTMParacou,
+  creekverticaldistance = CreekDistances$distvert,
+  creekhorizontaldistance = CreekDistances$disthorz,
+  speciescriteria = SpeciesCriteria,
+  volumeparameters = ForestZoneVolumeParametersTable,
+  scenario = "manual",
+  objective = 20,
+  fuel = "2", 
+  winching = "2", 
+  directionalfelling = "2", 
+  diversification = TRUE, 
+  specieslax = FALSE, 
+  objectivelax = TRUE,
+  crowndiameterparameters = ParamCrownDiameterAllometry,
+  advancedloggingparameters = loggingparameters()
+)
+```
+
+Several simulations can be run by the function `loggingsimulation()` to take stochasticity into account with argument `iter` (number of simulations) and `cores` (number of computer cores used to parallelize the computation).
+
+
+## Results
+
+Return a summary of the outputs of the logging simulation function.
+
+```{r}
+loggingsummary1(Rslt)
+```
+
+
+# References
