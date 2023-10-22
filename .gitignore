@@ -35,4 +35,4 @@ packages.bib
 cache/
 
 # Uncomment if CI builds docs/
-docs/
+# docs/
