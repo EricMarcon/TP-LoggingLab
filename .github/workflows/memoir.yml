@@ -24,6 +24,8 @@ jobs:
           install.packages("memoiR")
         shell: Rscript {0}
       - name: Render Rmarkdown files
+        env:
+          GITHUB_PAT: ${{ secrets.GH_PAT }}
         run: |
           lapply(list.files(pattern="*.Rmd"), function(file) rmarkdown::render(file, "all"))
           memoiR::build_githubpages()
