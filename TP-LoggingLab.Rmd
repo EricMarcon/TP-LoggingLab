@@ -454,6 +454,7 @@ ScndTrailAdjustOutputs <-
     advancedloggingparameters = loggingparameters()
   )
 ```
+
 ## Post-logging map
 
 We make a map with all trees, including felled ones.
