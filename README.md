@@ -4,4 +4,4 @@ Practical for the Sustainable Forest Management course of the Global Forestry ma
 
 Formats:
 
-- [HTML](TP-LoggingLab.html)
+- [HTML]([TP-LoggingLab.html](https://ericmarcon.github.io/TP-LoggingLab/TP-LoggingLab.html)https://ericmarcon.github.io/TP-LoggingLab/TP-LoggingLab.html)
