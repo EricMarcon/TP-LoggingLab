@@ -545,7 +545,7 @@ Details of the yield by species is in the inventory.
 ```{r}
 TimberV$inventory %>% 
   # Cut trees
-  filter(DeathCause == "cutted") %>% 
+  filter(DeathCause == "cut") %>% 
   # Group by commercial name
   group_by(CommercialName) %>% 
   # Number of trees, timber volume and commercial level
