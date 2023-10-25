@@ -34,7 +34,7 @@ library("tidyverse")
 We will use the LoggingLab package for R [@Badouard2023] to simulate reduced-impact logging in a tropical forest.
 The package must be installed from its Github repository because it is not on CRAN yet.
 
-```{r}
+```{r, cache=FALSE}
 # Install the latest dev version
 remotes::install_github("EricMarcon/LoggingLab", ref = "em")
 # To be changed for 
