@@ -59,7 +59,7 @@ Paracou6_2016 %>%
 Columns required by the package are: 
 
 - `Forest`: the forest name to apply the corresponding volume formula.
-- `idTree`: a unique indentifier for each tree. 
+- `idTree`: a unique identifier for each tree. 
 - `Xutm` and `Yutm`: the coordinates of each tree. 
 - `CodeAlive`: alive or dead tree.
 - `Family`, `Genus`, `Species`: botanical data. 
@@ -273,7 +273,7 @@ The secondary skidding trails:
 
 They avoid: 
 
-- the trees to be logged *
+- the trees to be logged
 - the trees with a DBH of more than 50 cm (`BigTrees`) 
 - the reserved trees. 
 
@@ -467,6 +467,13 @@ inventory %>%
   st_set_crs(st_crs(SecondaryTrails$MainTrailsAccess)) ->
   Selected
 
+# Hollow
+inventory %>% 
+  filter(ProbedHollow == "1") %>% 
+  st_as_sf(coords = c("Xutm", "Yutm")) %>%
+  st_set_crs(st_crs(SecondaryTrails$MainTrailsAccess)) ->
+  Hollow
+
 # Treefalls
 inventory %>% 
   filter(Treefall2ndDeath == "1") %>% 
@@ -496,6 +503,7 @@ ggplot() +
   # Felled trees
   geom_sf(data = TreePolygon, alpha = 0.5, fill = "red") +
   geom_sf(data = Selected, aes(colour = "Selected"), show.legend = "point") +
+  geom_sf(data = Hollow, aes(colour = "Hollow"), show.legend = "point") +
   geom_sf(data = Treefall, aes(colour = "Treefall"), show.legend = "point") +
   geom_sf(data = SecondaryTrails$maintrailsaccess, alpha = 0.5, fill = "black") +
   geom_sf(data = SecondaryTrails$SmoothedTrails, alpha = 0.5, fill = "black") +
@@ -508,7 +516,7 @@ ggplot() +
       "Selected" = "red",
       "Future" = "orange",
       "Reserve" = "purple",
-      "Probed hollow" = "forestgreen",
+      "Hollow" = "forestgreen",
       "Treefall" = "chocolate4"
     )
   ) +
