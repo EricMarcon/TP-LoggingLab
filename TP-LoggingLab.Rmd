@@ -242,7 +242,7 @@ inventory %>%
     topography = DTMParacou,
     speciescriteria = SpeciesCriteria,
     scenario ="manual", 
-    objective = 20,
+    objective = 30,
     fuel = "2",
     winching = "2",
     diversification = TRUE, 
@@ -540,6 +540,21 @@ TimberV <- timberharvestedvolume(
 inventory <- TimberV$inventory
 TimberV
 ```
+Details of the yield by species is in the inventory.
+
+```{r}
+TimberV$inventory %>% 
+  # Cut trees
+  filter(DeathCause == "cutted") %>% 
+  # Group by commercial name
+  group_by(CommercialName) %>% 
+  # Number of trees, timber volume and commercial level
+  summarise(
+    trees_n = n(), 
+    volume = sum(TimberLoggedVolume), 
+    CommercialLevel = unique(CommercialLevel)
+  )
+```
 
 
 ### Fuel wood
@@ -557,7 +572,6 @@ FuelV <- harvestablefuelwood(
   advancedloggingparameters = loggingparameters()
 )
 inventory <- FuelV$inventory
-FuelV
 ```
 
 
@@ -578,7 +592,7 @@ Rslt <- loggingsimulation1(
   speciescriteria = SpeciesCriteria,
   volumeparameters = ForestZoneVolumeParametersTable,
   scenario = "manual",
-  objective = 20,
+  objective = 30,
   fuel = "2", 
   winching = "2", 
   directionalfelling = "2", 
