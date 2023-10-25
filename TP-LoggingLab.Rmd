@@ -116,12 +116,12 @@ ScenariosTable
 
 Columns are:
 
-- Type: The name of the scenario.
-- SpatialDataType: the type of spatial data (Lidar or SRTM).
-- Objective: Objective volume per hectare.
-- Diversification: Allow logging other species in addition to the main commercial ones.
-- Winching: Winching method. No cable or grapple = "0", only cable = "1", grapple + cable = "2".
-- DirectionalFelling: "0" = unused, "1" = only to avoid damage to future and reserve trees, "2" = avoid damage to future and reserve trees + trail orientation.
+- `Type`: The name of the scenario.
+- `SpatialDataType`: the type of spatial data (Lidar or SRTM).
+- `Objective`: Objective volume per hectare.
+- `Diversification`: Allow logging other species in addition to the main commercial ones.
+- `Winching`: Winching method. No cable or grapple = "0", only cable = "1", grapple + cable = "2".
+- `DirectionalFelling`: "0" = unused, "1" = only to avoid damage to future and reserve trees, "2" = avoid damage to future and reserve trees + trail orientation.
 
 All functions allow `scenario = "manual"`: then, all arguments must be added manually.
 Their name is the same as that of columns.
@@ -245,7 +245,7 @@ inventory %>%
     objective = 20,
     fuel = "2",
     winching = "2",
-    diversification = FALSE, 
+    diversification = TRUE, 
     specieslax = FALSE,
     objectivelax = TRUE,
     harvestablearea = HarvestableArea$HarvestableArea,
@@ -469,7 +469,7 @@ inventory %>%
 
 # Treefalls
 inventory %>% 
-  filter(LoggingStatus == "treefall2nd") %>% 
+  filter(Treefall2ndDeath == "1") %>% 
   st_as_sf(coords = c("Xutm", "Yutm")) %>%
   st_set_crs(st_crs(SecondaryTrails$MainTrailsAccess)) ->
   Treefall
@@ -496,7 +496,7 @@ ggplot() +
   # Felled trees
   geom_sf(data = TreePolygon, alpha = 0.5, fill = "red") +
   geom_sf(data = Selected, aes(colour = "Selected"), show.legend = "point") +
-  geom_sf(data = Treefall, aes(colour = "Treefall2nd"), show.legend = "point") +
+  geom_sf(data = Treefall, aes(colour = "Treefall"), show.legend = "point") +
   geom_sf(data = SecondaryTrails$maintrailsaccess, alpha = 0.5, fill = "black") +
   geom_sf(data = SecondaryTrails$SmoothedTrails, alpha = 0.5, fill = "black") +
   scale_colour_manual(
@@ -509,7 +509,7 @@ ggplot() +
       "Future" = "orange",
       "Reserve" = "purple",
       "Probed hollow" = "forestgreen",
-      "Treefall2nd" = "chocolate4"
+      "Treefall" = "chocolate4"
     )
   ) +
   labs(color = "Logging status")
