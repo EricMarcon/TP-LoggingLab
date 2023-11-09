@@ -24,7 +24,7 @@ InstallPackages(c("bookdown", "formatR", "tidyverse", "DT"))
 # Specific packages
 InstallPackages(c("remotes"))
 # knitr options
-knitr::opts_chunk$set(echo = TRUE, cache = TRUE, message = FALSE)
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, message = FALSE, warning = FALSE)
 # Load the tidyverse
 library("tidyverse")
 ```
